@@ -15,6 +15,8 @@ import numpy as np
 from .questions import answer_question
 from .functions import functions, run_function
 import json
+import requests
+from together import Together
 
 # Get the directory of the current script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +29,7 @@ df["embeddings"] = df["embeddings"].apply(eval).apply(np.array)
 load_dotenv()  # take environment variables from .env.
 
 openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+together_client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 tg_bot_token = os.getenv("TG_BOT_TOKEN")
 
 CODE_PROMPT = """
@@ -152,15 +155,45 @@ async def mozilla(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=answer)
 
 
+async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    response = openai.images.generate(
+        prompt=update.message.text, model="dall-e-3", n=1, size="1024x1024"
+    )
+    image_url = response.data[0].url
+    image_response = requests.get(image_url)
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id, photo=image_response.content
+    )
+
+
+async def flux_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    response = together_client.images.generate(
+        prompt=update.message.text,
+        model="black-forest-labs/FLUX.1-schnell-Free",
+        n=1,
+        steps=4,
+    )
+
+    image_url = response.data[0].url
+    image_response = requests.get(image_url)
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id, photo=image_response.content
+    )
+
+
 if __name__ == "__main__":
     application = ApplicationBuilder().token(tg_bot_token).build()
 
     start_handler = CommandHandler("start", start)
     chat_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), chat)
     mozilla_handler = CommandHandler("mozilla", mozilla)
+    image_handler = CommandHandler("image", image)
+    flux_image_handler = CommandHandler("flux", flux_image)
 
     application.add_handler(start_handler)
     application.add_handler(chat_handler)
     application.add_handler(mozilla_handler)
+    application.add_handler(image_handler)
+    application.add_handler(flux_image_handler)
 
     application.run_polling()
